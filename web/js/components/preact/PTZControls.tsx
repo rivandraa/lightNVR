@@ -1,23 +1,29 @@
 /**
  * PTZ Controls Component
- * Pan-Tilt-Zoom controls for PTZ-enabled cameras
+ * Pan-Tilt-Zoom controls for PTZ-enabled cameras (TypeScript version with Draggable Panel & Delete Preset)
  */
 
-
-import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
+import type { JSX } from 'preact';
 import { useI18n } from '../../i18n.ts';
 import { showSuccessToast, showErrorToast } from './ToastContainer.tsx';
 import {
-  getPtzCapabilities, getPtzPresets, savePtzPreset, setPtzHome,
-  ptzMove, ptzStop, ptzHome, ptzGotoPreset
+  getPtzCapabilities,
+  getPtzPresets,
+  savePtzPreset,
+  setPtzHome,
+  ptzMove,
+  ptzStop,
+  ptzHome,
+  ptzGotoPreset,
+  deletePtzPreset
 } from './ptzActions.ts';
 import type { PtzCapabilities, PtzDirection, PtzError, PtzPreset } from '../../types/live.ts';
 
 interface DirectionButtonProps {
   direction: PtzDirection;
-  onMouseDown: () => unknown;
-  onMouseUp: () => unknown;
-  onMouseLeave: () => unknown;
+  onPressStart: () => void;
+  onPressEnd: () => void;
   disabled?: boolean;
 }
 
@@ -25,49 +31,99 @@ export interface PTZControlsProps {
   stream?: { name: string; ptz_enabled?: boolean } | null;
   isVisible?: boolean;
   onClose?: () => unknown;
-  /** MSEVideoCell passes this, but the component ignores it, so it renders nothing there. */
   streamName?: string;
-  /** MSEVideoCell passes this, but the component ignores it, so it renders nothing there. */
   ptzType?: string;
 }
 
+interface Position {
+  x: number;
+  y: number;
+}
+
+const DEFAULT_POSITION: Position = { x: 10, y: 10 };
 
 /**
- * Direction button component
+ * Direction button component dengan event handler tangguh
  */
-function DirectionButton({ direction, onMouseDown, onMouseUp, onMouseLeave, disabled }: DirectionButtonProps) {
-  const icons = {
-    up: '▲',
-    down: '▼',
-    left: '◀',
-    right: '▶',
-    'zoom-in': '+',
-    'zoom-out': '−'
+function DirectionButton({
+  direction,
+  onPressStart,
+  onPressEnd,
+  disabled
+}: DirectionButtonProps) {
+  const icons: Record<PtzDirection, JSX.Element> = {
+    up: (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 15l-6-6-6 6" />
+      </svg>
+    ),
+    down: (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6 9l6 6 6-6" />
+      </svg>
+    ),
+    left: (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M15 18l-6-6 6-6" />
+      </svg>
+    ),
+    right: (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 18l6-6-6-6" />
+      </svg>
+    ),
+    'zoom-in': (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        <line x1="11" y1="8" x2="11" y2="14" />
+        <line x1="8" y1="11" x2="14" y2="11" />
+      </svg>
+    ),
+    'zoom-out': (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        <line x1="8" y1="11" x2="14" y2="11" />
+      </svg>
+    )
+  };
+
+  const handleMouseDown = (e: MouseEvent) => {
+    if (disabled || e.button !== 0) return;
+    onPressStart();
+  };
+
+  const handleTouchStart = (e: TouchEvent) => {
+    if (disabled) return;
+    if (e.cancelable) e.preventDefault(); // Mencegah scrolling/gestur default saat menekan kontrol PTZ
+    onPressStart();
   };
 
   return (
     <button
+      type="button"
       className={`ptz-btn ptz-btn-${direction}`}
-      onMouseDown={onMouseDown}
-      onMouseUp={onMouseUp}
-      onMouseLeave={onMouseLeave}
-      onTouchStart={onMouseDown}
-      onTouchEnd={onMouseUp}
+      onMouseDown={handleMouseDown as any}
+      onTouchStart={handleTouchStart as any}
       disabled={disabled}
       style={{
-        width: '40px',
-        height: '40px',
+        width: '32px',
+        height: '32px',
         borderRadius: '50%',
-        border: 'none',
-        backgroundColor: 'rgba(59, 130, 246, 0.8)',
-        color: 'white',
-        fontSize: '16px',
+        border: '1px solid rgba(255, 255, 255, 0.2)',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        color: '#ffffff',
         cursor: disabled ? 'not-allowed' : 'pointer',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        transition: 'background-color 0.2s',
-        opacity: disabled ? 0.5 : 1
+        transition: 'all 0.15s ease-in-out',
+        opacity: disabled ? 0.35 : 1,
+        userSelect: 'none',
+        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+        backdropFilter: 'blur(4px)',
+        margin: 'auto'
       }}
     >
       {icons[direction]}
@@ -76,20 +132,133 @@ function DirectionButton({ direction, onMouseDown, onMouseUp, onMouseLeave, disa
 }
 
 /**
- * PTZ Controls component
+ * PTZ Controls component (TS Version)
  */
 export function PTZControls({ stream, isVisible = true, onClose }: PTZControlsProps) {
   const { t } = useI18n();
-  const [speed, setSpeed] = useState(0.5);
+
+  const [speed, setSpeed] = useState<number>(0.5);
   const [presets, setPresets] = useState<PtzPreset[]>([]);
-  const [isMoving, setIsMoving] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<PtzCapabilities | null>(null);
-  const [canManage, setCanManage] = useState(true);
-  const [presetName, setPresetName] = useState('');
-  const [showPresetForm, setShowPresetForm] = useState(false);
-  const [confirmSetHome, setConfirmSetHome] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [canManage, setCanManage] = useState<boolean>(true);
+  const [presetName, setPresetName] = useState<string>('');
+  const [showPresetForm, setShowPresetForm] = useState<boolean>(false);
+  const [confirmSetHome, setConfirmSetHome] = useState<boolean>(false);
+  const [saving, setSaving] = useState<boolean>(false);
+
+  // Synchronous ref untuk melacak pergerakan tanpa delay state
+  const isMovingRef = useRef<boolean>(false);
+
+  // =========================
+  // DRAG STATE & FUNCTIONS
+  // =========================
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [position, setPosition] = useState<Position>(DEFAULT_POSITION);
+
+  const dragData = useRef({
+    dragging: false,
+    startX: 0,
+    startY: 0,
+    initialX: 10,
+    initialY: 10
+  });
+
+  const handleWheel = useCallback((e: WheelEvent) => {
+    e.stopPropagation();
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+  }, []);
+
+  const clampPosition = useCallback((x: number, y: number): Position => {
+    const panel = panelRef.current;
+    if (!panel) return { x, y };
+
+    const parent = panel.parentElement;
+    if (!parent) return { x, y };
+
+    const parentRect = parent.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+
+    const maxX = parentRect.width - panelRect.width;
+    const maxY = parentRect.height - panelRect.height;
+
+    return {
+      x: Math.max(0, Math.min(x, maxX)),
+      y: Math.max(0, Math.min(y, maxY))
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setPosition(DEFAULT_POSITION);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  const startDrag = useCallback((e: MouseEvent | TouchEvent) => {
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const touchEvent = e as TouchEvent;
+    const mouseEvent = e as MouseEvent;
+    const clientX = touchEvent.touches ? touchEvent.touches[0].clientX : mouseEvent.clientX;
+    const clientY = touchEvent.touches ? touchEvent.touches[0].clientY : mouseEvent.clientY;
+
+    dragData.current = {
+      dragging: true,
+      startX: clientX,
+      startY: clientY,
+      initialX: position.x,
+      initialY: position.y
+    };
+
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+  }, [position]);
+
+  useEffect(() => {
+    const onDrag = (e: MouseEvent | TouchEvent) => {
+      if (!dragData.current.dragging) return;
+
+      const touchEvent = e as TouchEvent;
+      const mouseEvent = e as MouseEvent;
+      const clientX = touchEvent.touches ? touchEvent.touches[0].clientX : mouseEvent.clientX;
+      const clientY = touchEvent.touches ? touchEvent.touches[0].clientY : mouseEvent.clientY;
+
+      const deltaX = clientX - dragData.current.startX;
+      const deltaY = dragData.current.startY - clientY;
+
+      const newX = dragData.current.initialX + deltaX;
+      const newY = dragData.current.initialY + deltaY;
+
+      const clamped = clampPosition(newX, newY);
+      setPosition(clamped);
+    };
+
+    const stopDrag = () => {
+      dragData.current.dragging = false;
+    };
+
+    window.addEventListener('mousemove', onDrag);
+    window.addEventListener('mouseup', stopDrag);
+    window.addEventListener('touchmove', onDrag, { passive: false });
+    window.addEventListener('touchend', stopDrag);
+
+    return () => {
+      window.removeEventListener('mousemove', onDrag);
+      window.removeEventListener('mouseup', stopDrag);
+      window.removeEventListener('touchmove', onDrag);
+      window.removeEventListener('touchend', stopDrag);
+    };
+  }, [clampPosition]);
 
   // Load capabilities and presets
   useEffect(() => {
@@ -99,15 +268,20 @@ export function PTZControls({ stream, isVisible = true, onClose }: PTZControlsPr
     setCapabilities(null);
     setCanManage(true);
     setPresets([]);
+    setSelectedPreset('');
     setPresetName('');
     setShowPresetForm(false);
     setConfirmSetHome(false);
+    setPosition(DEFAULT_POSITION);
+
     getPtzCapabilities(stream.name)
       .then(data => { if (active) setCapabilities(data); })
       .catch(err => console.error('Failed to get PTZ capabilities:', err));
+
     getPtzPresets(stream.name)
       .then(data => { if (active) setPresets(data.presets || []); })
       .catch(err => console.error('Failed to get PTZ presets:', err));
+
     return () => { active = false; };
   }, [stream?.name, stream?.ptz_enabled]);
 
@@ -139,6 +313,21 @@ export function PTZControls({ stream, isVisible = true, onClose }: PTZControlsPr
     }
   }, [stream?.name, presetName, saving, t, handleActionFailure]);
 
+  const handleDeletePreset = useCallback(async () => {
+    if (!stream?.name || !selectedPreset || saving) return;
+    setSaving(true);
+    try {
+      await deletePtzPreset(stream.name, selectedPreset);
+      setPresets(prev => prev.filter(p => p.token !== selectedPreset));
+      setSelectedPreset('');
+      showSuccessToast(t('live.ptzPresetDeleted') || 'Preset deleted');
+    } catch (err) {
+      handleActionFailure(err as PtzError, t('live.ptzPresetDeleteFailed') || 'Failed to delete preset');
+    } finally {
+      setSaving(false);
+    }
+  }, [stream?.name, selectedPreset, saving, t, handleActionFailure]);
+
   const handleSetHome = useCallback(async () => {
     if (!stream?.name || saving) return;
     setSaving(true);
@@ -153,27 +342,48 @@ export function PTZControls({ stream, isVisible = true, onClose }: PTZControlsPr
     }
   }, [stream?.name, saving, t, handleActionFailure]);
 
-  // Handle continuous move
+  // ==========================================
+  // PTZ MOVE & STOP LOGIC PERBAIKAN BUG
+  // ==========================================
+  const handleMoveStop = useCallback(() => {
+    if (!stream?.name || !isMovingRef.current) return;
+    isMovingRef.current = false;
+    
+    ptzStop(stream.name)
+      .catch(err => console.error('PTZ stop error:', err));
+  }, [stream?.name]);
+
   const handleMoveStart = useCallback((pan: number, tilt: number, zoom: number) => {
     if (!stream?.name) return;
-    setIsMoving(true);
+    isMovingRef.current = true;
     setError(null);
     
     ptzMove(stream.name, pan * speed, tilt * speed, zoom * speed)
       .catch(err => {
-        setIsMoving(false);
+        isMovingRef.current = false;
         setError(t('live.ptzMoveFailed'));
         console.error('PTZ move error:', err);
       });
   }, [stream?.name, speed, t]);
 
-  const handleMoveStop = useCallback(() => {
-    if (!stream?.name || !isMoving) return;
-    setIsMoving(false);
-    
-    ptzStop(stream.name)
-      .catch(err => console.error('PTZ stop error:', err));
-  }, [stream?.name, isMoving]);
+  // Pasang global listener pada window saat tombol PTZ ditahan
+  useEffect(() => {
+    const handleGlobalRelease = () => {
+      if (isMovingRef.current) {
+        handleMoveStop();
+      }
+    };
+
+    window.addEventListener('mouseup', handleGlobalRelease);
+    window.addEventListener('touchend', handleGlobalRelease);
+    window.addEventListener('touchcancel', handleGlobalRelease);
+
+    return () => {
+      window.removeEventListener('mouseup', handleGlobalRelease);
+      window.removeEventListener('touchend', handleGlobalRelease);
+      window.removeEventListener('touchcancel', handleGlobalRelease);
+    };
+  }, [handleMoveStop]);
 
   const handleHome = useCallback(() => {
     if (!stream?.name) return;
@@ -201,113 +411,214 @@ export function PTZControls({ stream, isVisible = true, onClose }: PTZControlsPr
 
   return (
     <div
+      ref={panelRef}
       className="ptz-controls"
+      onWheel={(e) => handleWheel(e as unknown as WheelEvent)}
       style={{
         position: 'absolute',
-        bottom: '60px',
-        insetInlineStart: '10px',
-        backgroundColor: 'rgba(0, 0, 0, 0.75)',
-        borderRadius: '8px',
-        padding: '12px',
+        left: `${position.x}px`,
+        bottom: `${position.y}px`,
+        backgroundColor: 'rgba(0, 0, 0, 0.38)',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
+        borderRadius: '16px',
+        border: '1px solid rgba(255, 255, 255, 0.25)',
+        boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.4)',
+        padding: '10px 12px',
         zIndex: 10,
         display: 'flex',
         flexDirection: 'column',
         gap: '8px',
-        minWidth: '160px'
+        minWidth: '140px',
+        touchAction: 'none',
+        userSelect: 'none',
+        pointerEvents: 'auto'
       }}
     >
-      {/* Header with close button */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-        <span style={{ color: 'white', fontSize: '12px', fontWeight: 'bold' }}>{t('live.ptzControl')}</span>
+      {/* HEADER DRAG */}
+      <div
+        onMouseDown={(e) => startDrag(e as unknown as MouseEvent)}
+        onTouchStart={(e) => startDrag(e as unknown as TouchEvent)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          cursor: 'move',
+          padding: '6px 8px',
+          backgroundColor: 'rgba(0, 0, 0, 0.35)',
+          borderRadius: '8px',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          width: '100%',
+          boxSizing: 'border-box'
+        }}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="rgba(255,255,255,0.6)" style={{ marginRight: '6px', flexShrink: 0 }}>
+          <circle cx="9" cy="5" r="1.5" />
+          <circle cx="9" cy="12" r="1.5" />
+          <circle cx="9" cy="19" r="1.5" />
+          <circle cx="15" cy="5" r="1.5" />
+          <circle cx="15" cy="12" r="1.5" />
+          <circle cx="15" cy="19" r="1.5" />
+        </svg>
+
+        <span
+          style={{
+            color: '#ffffff',
+            fontSize: '11px',
+            fontWeight: '600',
+            letterSpacing: '0.3px',
+            textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+            marginRight: 'auto'
+          }}
+        >
+          {t('live.ptzControl')}
+        </span>
+
         {onClose && (
           <button
             type="button"
             onClick={onClose}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
             aria-label={t('common.close')}
             style={{
               background: 'none',
               border: 'none',
-              color: 'white',
               cursor: 'pointer',
-              fontSize: '16px',
-              padding: '0 4px'
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginLeft: '6px',
+              color: 'rgba(255, 255, 255, 0.7)',
+              touchAction: 'manipulation'
             }}
           >
-            ×
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
         )}
       </div>
 
       {/* Direction pad */}
-      <div dir="ltr" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 40px)', gap: '4px', justifyContent: 'center' }}>
+      <div 
+        dir="ltr" 
+        style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(3, 32px)', 
+          gridTemplateRows: 'repeat(3, 32px)',
+          gap: '4px', 
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}
+      >
         <div></div>
         <DirectionButton
           direction="up"
-          onMouseDown={() => handleMoveStart(0, 1, 0)}
-          onMouseUp={handleMoveStop}
-          onMouseLeave={handleMoveStop}
+          onPressStart={() => handleMoveStart(0, 1, 0)}
+          onPressEnd={handleMoveStop}
         />
         <div></div>
+
         <DirectionButton
           direction="left"
-          onMouseDown={() => handleMoveStart(-1, 0, 0)}
-          onMouseUp={handleMoveStop}
-          onMouseLeave={handleMoveStop}
+          onPressStart={() => handleMoveStart(-1, 0, 0)}
+          onPressEnd={handleMoveStop}
         />
+
+        {/* HOME BUTTON */}
         <button
           type="button"
           onClick={handleHome}
           aria-label={t('live.goToHomePosition')}
-          style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '50%',
-            border: 'none',
-            backgroundColor: 'rgba(107, 114, 128, 0.8)',
-            color: 'white',
-            fontSize: '10px',
-            cursor: 'pointer'
-          }}
           title={t('live.goToHomePosition')}
+          style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            border: '1px solid rgba(59, 130, 246, 0.4)',
+            backgroundColor: 'rgba(37, 99, 235, 0.25)',
+            color: '#60a5fa',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.15s ease',
+            boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+            margin: 'auto'
+          }}
         >
-          ⌂
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
         </button>
+
         <DirectionButton
           direction="right"
-          onMouseDown={() => handleMoveStart(1, 0, 0)}
-          onMouseUp={handleMoveStop}
-          onMouseLeave={handleMoveStop}
+          onPressStart={() => handleMoveStart(1, 0, 0)}
+          onPressEnd={handleMoveStop}
         />
+
         <div></div>
         <DirectionButton
           direction="down"
-          onMouseDown={() => handleMoveStart(0, -1, 0)}
-          onMouseUp={handleMoveStop}
-          onMouseLeave={handleMoveStop}
+          onPressStart={() => handleMoveStart(0, -1, 0)}
+          onPressEnd={handleMoveStop}
         />
         <div></div>
       </div>
 
       {/* Zoom controls */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '4px' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: '8px',
+          marginTop: '2px',
+          width: '100%'
+        }}
+      >
         <DirectionButton
           direction="zoom-out"
-          onMouseDown={() => handleMoveStart(0, 0, -1)}
-          onMouseUp={handleMoveStop}
-          onMouseLeave={handleMoveStop}
+          onPressStart={() => handleMoveStart(0, 0, -1)}
+          onPressEnd={handleMoveStop}
         />
-        <span style={{ color: 'white', fontSize: '11px', alignSelf: 'center' }}>{t('live.zoom')}</span>
+
+        <span
+          style={{
+            color: '#ffffff',
+            fontSize: '11px',
+            fontWeight: '600',
+            textShadow: '0 1px 3px rgba(0,0,0,0.9)'
+          }}
+        >
+          {t('live.zoom')}
+        </span>
+
         <DirectionButton
           direction="zoom-in"
-          onMouseDown={() => handleMoveStart(0, 0, 1)}
-          onMouseUp={handleMoveStop}
-          onMouseLeave={handleMoveStop}
+          onPressStart={() => handleMoveStart(0, 0, 1)}
+          onPressEnd={handleMoveStop}
         />
       </div>
 
       {/* Speed slider */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-        <span style={{ color: 'white', fontSize: '11px' }}>{t('live.speedLabel')}</span>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          marginTop: '2px',
+          padding: '2px 4px'
+        }}
+      >
+        <span style={{ color: '#ffffff', fontSize: '10px', fontWeight: '600', textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+          {t('live.speedLabel')}
+        </span>
+
         <input
           type="range"
           aria-label={t('live.speedLabel')}
@@ -316,97 +627,254 @@ export function PTZControls({ stream, isVisible = true, onClose }: PTZControlsPr
           step="0.1"
           value={speed}
           onChange={(e) => setSpeed(parseFloat((e.target as HTMLInputElement).value))}
-          style={{ flex: 1 }}
+          style={{ flex: 1, height: '4px', accentColor: '#3b82f6', cursor: 'pointer' }}
         />
-        <span style={{ color: 'white', fontSize: '11px', width: '30px' }}>{Math.round(speed * 100)}%</span>
+
+        <span style={{ color: '#ffffff', fontSize: '10px', width: '26px', textAlign: 'right', fontWeight: '600', textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+          {Math.round(speed * 100)}%
+        </span>
       </div>
 
-      {/* Presets dropdown */}
+      {/* Presets */}
       {presets.length > 0 && (
-        <div style={{ marginTop: '4px' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'stretch',
+            gap: '4px',
+            marginTop: '2px',
+            width: '100%'
+          }}
+        >
           <select
             aria-label={t('live.goToPreset')}
-            onChange={(e) => (e.target as HTMLSelectElement).value && handlePreset((e.target as HTMLSelectElement).value)}
+            value={selectedPreset}
+            onChange={(e) => {
+              const token = (e.target as HTMLSelectElement).value;
+              setSelectedPreset(token);
+              if (token) handlePreset(token);
+            }}
             style={{
-              width: '100%',
-              padding: '6px',
-              borderRadius: '4px',
-              border: 'none',
-              backgroundColor: 'rgba(59, 130, 246, 0.8)',
+              flex: 1,
+              minWidth: 0,
+              padding: '5px 8px',
+              borderRadius: '8px',
+              border: '1px solid rgba(255, 255, 255, 0.25)',
+              backgroundColor: 'rgba(0, 0, 0, 0.35)',
               color: 'white',
-              fontSize: '12px',
-              cursor: 'pointer'
+              fontSize: '10px',
+              cursor: 'pointer',
+              outline: 'none',
+              boxSizing: 'border-box'
             }}
           >
-            <option value="">{t('live.goToPreset')}</option>
+            <option
+              value=""
+              style={{ backgroundColor: '#0f172a', color: 'white' }}
+            >
+              {t('live.goToPreset')}
+            </option>
+        
             {presets.map(preset => (
-              <option key={preset.token} value={preset.token}>
+              <option
+                key={preset.token}
+                value={preset.token}
+                style={{ backgroundColor: '#0f172a', color: 'white' }}
+              >
                 {preset.name || t('live.presetNumber', { token: preset.token })}
               </option>
             ))}
           </select>
+        
+          {canManage && selectedPreset && (
+            <button
+              type="button"
+              onClick={handleDeletePreset}
+              disabled={saving}
+              title={t('common.delete') || 'Hapus Preset'}
+              style={{
+                width: '32px',
+                minWidth: '32px',
+                alignSelf: 'stretch',
+                borderRadius: '8px',
+                border: '1px solid rgba(239, 68, 68, 0.5)',
+                backgroundColor: 'rgba(239, 68, 68, 0.4)',
+                color: 'white',
+                cursor: saving ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                padding: '0',
+                boxSizing: 'border-box',
+                opacity: saving ? 0.5 : 1
+              }}
+            >
+              <svg
+                width="12"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="white"
+                strokeWidth="2"
+              >
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </button>
+          )}
         </div>
       )}
-
+      
       {canManage && capabilities?.has_presets && (
         showPresetForm ? (
-          <form onSubmit={handleSavePreset} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label htmlFor="ptz-preset-name" style={{ color: 'white', fontSize: '11px' }}>
-              {t('live.ptzPresetName')}
+          <form onSubmit={handleSavePreset} style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', marginTop: '2px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%' }}>
+              <label htmlFor="ptz-preset-name" style={{ color: '#ffffff', fontSize: '10px', fontWeight: '600', textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
+                {t('live.ptzPresetName')}
+              </label>
               <input
                 id="ptz-preset-name"
                 type="text"
-                aria-label={t('live.ptzPresetName')}
                 value={presetName}
                 onInput={(event) => setPresetName(event.currentTarget.value)}
                 maxLength={64}
                 required
-                style={{ padding: '6px', borderRadius: '4px' }}
+                style={{
+                  width: '100%',
+                  padding: '5px 8px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(255, 255, 255, 0.25)',
+                  backgroundColor: 'rgba(0, 0, 0, 0.4)',
+                  color: 'white',
+                  fontSize: '10px',
+                  boxSizing: 'border-box',
+                  outline: 'none'
+                }}
               />
-            </label>
+            </div>
             <div style={{ display: 'flex', gap: '4px' }}>
-              <button type="submit" disabled={saving || !presetName.trim()} aria-label={t('live.ptzSavePreset')}>
+              <button 
+                type="submit" 
+                disabled={saving || !presetName.trim()} 
+                aria-label={t('live.ptzSavePreset')} 
+                style={{ 
+                  flex: 1, 
+                  fontSize: '10px', 
+                  padding: '5px 8px', 
+                  borderRadius: '8px', 
+                  border: '1px solid rgba(59, 130, 246, 0.5)', 
+                  backgroundColor: 'rgba(37, 99, 235, 0.7)', 
+                  color: 'white', 
+                  cursor: saving || !presetName.trim() ? 'not-allowed' : 'pointer',
+                  opacity: saving || !presetName.trim() ? 0.5 : 1
+                }}
+              >
                 {t('live.ptzSavePreset')}
               </button>
-              <button type="button" disabled={saving} onClick={() => setShowPresetForm(false)} aria-label={t('common.cancel')}>
+              <button 
+                type="button" 
+                disabled={saving} 
+                onClick={() => setShowPresetForm(false)} 
+                aria-label={t('common.cancel')} 
+                style={{ 
+                  flex: 1, 
+                  fontSize: '10px', 
+                  padding: '5px 8px', 
+                  borderRadius: '8px', 
+                  border: '1px solid rgba(255, 255, 255, 0.2)', 
+                  backgroundColor: 'rgba(255, 255, 255, 0.15)', 
+                  color: 'white', 
+                  cursor: saving ? 'not-allowed' : 'pointer' 
+                }}
+              >
                 {t('common.cancel')}
               </button>
             </div>
           </form>
         ) : (
-          <button type="button" onClick={() => { setConfirmSetHome(false); setShowPresetForm(true); }} aria-label={t('live.ptzSaveCurrentPosition')}>
-            {t('live.ptzSaveCurrentPosition')}
+          <button 
+            type="button" 
+            onClick={() => { setConfirmSetHome(false); setShowPresetForm(true); }} 
+            aria-label={t('live.ptzSaveCurrentPosition')} 
+            style={{ 
+              width: '100%', 
+              fontSize: '10px', 
+              fontWeight: '500',
+              padding: '6px 10px', 
+              borderRadius: '8px', 
+              border: '1px solid rgba(255, 255, 255, 0.15)', 
+              backgroundColor: 'rgba(255, 255, 255, 0.08)', 
+              color: 'white', 
+              cursor: 'pointer',
+              marginTop: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span>{t('live.ptzSaveCurrentPosition')}</span>
           </button>
         )
       )}
 
       {canManage && capabilities?.has_home_position && (
         confirmSetHome ? (
-          <div style={{ color: 'white', fontSize: '11px' }}>
+          <div style={{ color: '#ffffff', fontSize: '10px' }}>
             <span>{t('live.ptzConfirmSetHome')}</span>
-            <div style={{ display: 'flex', gap: '4px' }}>
-              <button type="button" disabled={saving} onClick={handleSetHome} aria-label={t('live.ptzSetHome')}>
+            <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+              <button type="button" disabled={saving} onClick={handleSetHome} aria-label={t('live.ptzSetHome')} style={{ flex: 1, fontSize: '10px', padding: '4px 6px', borderRadius: '6px', border: '1px solid rgba(59, 130, 246, 0.5)', backgroundColor: 'rgba(37,99,235,0.7)', color: 'white' }}>
                 {t('live.ptzSetHome')}
               </button>
-              <button type="button" disabled={saving} onClick={() => setConfirmSetHome(false)} aria-label={t('common.cancel')}>
+              <button type="button" disabled={saving} onClick={() => setConfirmSetHome(false)} aria-label={t('common.cancel')} style={{ flex: 1, fontSize: '10px', padding: '4px 6px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.2)', backgroundColor: 'rgba(255,255,255,0.15)', color: 'white' }}>
                 {t('common.cancel')}
               </button>
             </div>
           </div>
         ) : (
-          <button type="button" onClick={() => { setShowPresetForm(false); setConfirmSetHome(true); }} aria-label={t('live.ptzSetCurrentPositionHome')}>
-            {t('live.ptzSetCurrentPositionHome')}
+          <button 
+            type="button" 
+            onClick={() => { setShowPresetForm(false); setConfirmSetHome(true); }} 
+            aria-label={t('live.ptzSetCurrentPositionHome')} 
+            style={{ 
+              width: '100%', 
+              fontSize: '10px', 
+              fontWeight: '500',
+              padding: '6px 10px', 
+              borderRadius: '8px', 
+              border: '1px solid rgba(255, 255, 255, 0.15)', 
+              backgroundColor: 'rgba(255, 255, 255, 0.08)', 
+              color: 'white', 
+              cursor: 'pointer',
+              marginTop: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
+            <span>{t('live.ptzSetCurrentPositionHome')}</span>
           </button>
         )
       )}
 
       {/* Error message */}
       {error && (
-        <div style={{ color: '#ef4444', fontSize: '11px', textAlign: 'center' }}>
+        <div style={{ color: '#f87171', fontSize: '10px', textAlign: 'center', textShadow: '0 1px 3px rgba(0,0,0,0.9)' }}>
           {error}
         </div>
       )}
     </div>
   );
 }
-
