@@ -68,3 +68,7 @@ export function ptzHome(streamName: string) {
 export function ptzGotoPreset(streamName: string, token: string) {
   return ptzRequest(streamName, 'goto-preset', postJson({ token }));
 }
+
+export function deletePtzPreset(streamName: string, token: string) {
+  return ptzRequest(streamName, 'delete-preset', postJson({ token }));
+}
