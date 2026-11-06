@@ -1,5 +1,5 @@
 import {
-  getPtzCapabilities, savePtzPreset, setPtzHome, ptzMove, ptzStop, ptzHome, ptzGotoPreset
+  getPtzCapabilities, savePtzPreset, setPtzHome, ptzMove, ptzStop, ptzHome, ptzGotoPreset, deletePtzPreset
 } from '../js/components/preact/ptzActions.ts';
 
 const originalFetch = global.fetch;
@@ -27,6 +27,21 @@ describe('PTZ position actions', () => {
     expect(global.fetch).toHaveBeenNthCalledWith(2,
       '/api/streams/Front%20door%20%2F%201/ptz/presets', undefined);
     expect(onPresets).toHaveBeenCalledWith(updatedPresets);
+  });
+
+  test('deletes a preset by token', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true, json: async () => ({ success: true })
+    });
+
+    await deletePtzPreset('Front door / 1', 'preset-42');
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/streams/Front%20door%20%2F%201/ptz/delete-preset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'preset-42' })
+      });
   });
 
   test('sets the current position as home', async () => {
@@ -102,6 +117,7 @@ describe('PTZ position actions', () => {
 
     await expect(ptzMove('Lobby', 1, 0, 0)).rejects.toMatchObject({ status: 500 });
     await expect(ptzGotoPreset('Lobby', 'x')).rejects.toMatchObject({ status: 500 });
+    await expect(deletePtzPreset('Lobby', 'x')).rejects.toMatchObject({ status: 500 });
     expect(json).not.toHaveBeenCalled();
   });
 });
