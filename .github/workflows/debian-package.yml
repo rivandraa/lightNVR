@@ -7,52 +7,21 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: read
   contents: write
   packages: read
 
-# Superseded commits do not need to finish the same workflow.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  release-preflight:
-    uses: ./.github/workflows/release-preflight.yml
-
   build-deb:
-    needs: release-preflight
     name: Build .deb (${{ matrix.debian_suite }}/${{ matrix.deb_arch }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Debian sid (unstable) builds
-          - runner: ubuntu-latest
-            platform: linux/amd64
-            deb_arch: amd64
-            debian_suite: sid
-          - runner: ubuntu-24.04-arm
-            platform: linux/arm64
-            deb_arch: arm64
-            debian_suite: sid
-          - runner: ubuntu-latest
-            platform: linux/arm/v7
-            deb_arch: armhf
-            debian_suite: sid
           # Debian trixie (13/stable) builds
-          - runner: ubuntu-latest
-            platform: linux/amd64
-            deb_arch: amd64
-            debian_suite: trixie
           - runner: ubuntu-24.04-arm
             platform: linux/arm64
             deb_arch: arm64
-            debian_suite: trixie
-          - runner: ubuntu-latest
-            platform: linux/arm/v7
-            deb_arch: armhf
             debian_suite: trixie
 
     steps:
